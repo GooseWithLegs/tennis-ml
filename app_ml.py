@@ -36,8 +36,8 @@ if not files:
     st.info("⬅️ Upload one or more Sackmann match CSVs in the sidebar to train the model.")
     st.stop()
 
-@st.cache_data(show_spinner="Training model…")
-def train(file_bytes):
+@st.cache_data(show_spinner=False)
+def parse_files(file_bytes):
     frames = []
     report = []
     for name, b in file_bytes:
@@ -53,9 +53,18 @@ def train(file_bytes):
     df = pd.concat(frames, ignore_index=True)
     df = df.dropna(subset=["winner_name", "loser_name", "surface"])
     df = df.sort_values("tourney_date", kind="stable").reset_index(drop=True)
-    return ml.run(df), report
+    return df, report
 
-res, report = train([(f.name, f.getvalue()) for f in files])
+@st.cache_resource(show_spinner="Training model…")
+def train_model(df_key, _df):
+    # df_key is a lightweight cache key (row count + col hash); _df is not hashed
+    return ml.run(_df)
+
+df, report = parse_files([(f.name, f.getvalue()) for f in files])
+res = None
+if df is not None:
+    key = f"{len(df)}-{hash(tuple(df.columns))}-{df['tourney_date'].iloc[0]}-{df['tourney_date'].iloc[-1]}"
+    res = train_model(key, df)
 
 ok = [r for r in report if r[2] is None]
 bad = [r for r in report if r[2] is not None]
